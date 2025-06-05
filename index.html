@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>距离与倒计时</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #e74c3c;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .distance {
+            font-size: 28px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .countdown {
+            font-size: 28px;
+            font-weight: bold;
+            color: #2ecc71;
+        }
+        input, button {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .admin-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px dashed #ccc;
+        }
+        .hidden {
+            display: none;
+        }
+        .symbol {
+            font-size: 24px;
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>孙先生❤毕小姐的距离及见面倒计时</h1>
+        
+        <div class="info-box">
+            <div>孙先生当前位置与老家德州的距离</div>
+            <div class="distance" id="distance">--</div>
+            <div id="location-status">等待管理员输入当前位置...</div>
+        </div>
+        
+        <div class="info-box">
+            <div>下次见面倒计时</div>
+            <div class="countdown" id="countdown">--</div>
+            <div id="meeting-date">下次见面日期: 加载中...</div>
+        </div>
+        
+        <div class="admin-section" id="admin-section">
+            <h3>管理员设置</h3>
+            <input type="password" id="admin-password" placeholder="输入管理员密码">
+            <button onclick="checkAdminPassword()">验证</button>
+            
+            <div id="admin-controls" class="hidden">
+                <p>设置下次见面日期:</p>
+                <input type="date" id="meeting-date-input">
+                <button onclick="updateMeetingDate()">更新日期</button>
+                
+                <p>设置德州坐标 (默认: 36.948371, 116.001726):</p>
+                <input type="text" id="dezhou-lat" placeholder="纬度">
+                <input type="text" id="dezhou-lng" placeholder="经度">
+                <button onclick="updateDezhouLocation()">更新坐标</button>
+                
+                <p>设置当前位置坐标:</p>
+                <input type="text" id="current-lat" placeholder="纬度">
+                <input type="text" id="current-lng" placeholder="经度">
+                <button onclick="updateCurrentLocation()">更新当前位置</button>
+                
+                <p>设置管理员密码:</p>
+                <input type="password" id="new-password" placeholder="新密码">
+                <button onclick="updatePassword()">更新密码</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 默认德州坐标
+        let dezhouLat = 36.948371;
+        let dezhouLng = 116.001726;
+        
+        // 当前用户坐标
+        let currentLat = null;
+        let currentLng = null;
+        
+        // 默认见面日期 (YYYY-MM-DD)
+        let meetingDate = "2023-12-25";
+        
+        // 管理员密码
+        let adminPassword = "love123";
+        
+        // 从本地存储加载数据
+        function loadData() {
+            const savedLat = localStorage.getItem('dezhouLat');
+            const savedLng = localStorage.getItem('dezhouLng');
+            const savedCurrentLat = localStorage.getItem('currentLat');
+            const savedCurrentLng = localStorage.getItem('currentLng');
+            const savedDate = localStorage.getItem('meetingDate');
+            const savedPassword = localStorage.getItem('adminPassword');
+            
+            if (savedLat) dezhouLat = parseFloat(savedLat);
+            if (savedLng) dezhouLng = parseFloat(savedLng);
+            if (savedCurrentLat) currentLat = parseFloat(savedCurrentLat);
+            if (savedCurrentLng) currentLng = parseFloat(savedCurrentLng);
+            if (savedDate) meetingDate = savedDate;
+            if (savedPassword) adminPassword = savedPassword;
+            
+            updateUI();
+            
+            // 如果有当前位置数据，计算距离
+            if (currentLat && currentLng) {
+                updateDistance(currentLat, currentLng);
+            }
+        }
+        
+        // 更新UI显示
+        function updateUI() {
+            document.getElementById('meeting-date').textContent = `下次见面日期: ${formatDate(meetingDate)}`;
+            updateCountdown();
+        }
+        
+        // 格式化日期
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+        }
+        
+        // 计算两个坐标之间的距离 (公里)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // 地球半径(km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        // 更新距离显示
+        function updateDistance(latitude, longitude) {
+            const distance = calculateDistance(latitude, longitude, dezhouLat, dezhouLng);
+            document.getElementById('distance').textContent = `${distance.toFixed(1)} km`;
+            document.getElementById('location-status').textContent = `当前位置: 纬度 ${latitude.toFixed(6)}, 经度 ${longitude.toFixed(6)}`;
+        }
+        
+        // 更新倒计时
+        function updateCountdown() {
+            const now = new Date();
+            const targetDate = new Date(meetingDate);
+            const diff = targetDate - now;
+            
+            if (diff <= 0) {
+                document.getElementById('countdown').textContent = "已见面!";
+                return;
+            }
+            
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            
+            document.getElementById('countdown').textContent = `${days}天 ${hours}小时 ${minutes}分 ${seconds}秒`;
+        }
+        
+        // 检查管理员密码
+        function checkAdminPassword() {
+            const password = document.getElementById('admin-password').value;
+            if (password === adminPassword) {
+                document.getElementById('admin-controls').classList.remove('hidden');
+                document.getElementById('meeting-date-input').value = meetingDate;
+                document.getElementById('dezhou-lat').value = dezhouLat;
+                document.getElementById('dezhou-lng').value = dezhouLng;
+                document.getElementById('current-lat').value = currentLat || '';
+                document.getElementById('current-lng').value = currentLng || '';
+                alert("管理员验证成功!");
+            } else {
+                alert("密码错误!");
+            }
+            document.getElementById('admin-password').value = "";
+        }
+        
+        // 更新见面日期
+        function updateMeetingDate() {
+            const newDate = document.getElementById('meeting-date-input').value;
+            if (!newDate) {
+                alert("请选择有效日期");
+                return;
+            }
+            
+            meetingDate = newDate;
+            localStorage.setItem('meetingDate', meetingDate);
+            updateUI();
+            alert("见面日期已更新!");
+        }
+        
+        // 更新德州坐标
+        function updateDezhouLocation() {
+            const lat = parseFloat(document.getElementById('dezhou-lat').value);
+            const lng = parseFloat(document.getElementById('dezhou-lng').value);
+            
+            if (isNaN(lat) || isNaN(lng)) {
+                alert("请输入有效的经纬度");
+                return;
+            }
+            
+            dezhouLat = lat;
+            dezhouLng = lng;
+            localStorage.setItem('dezhouLat', dezhouLat);
+            localStorage.setItem('dezhouLng', dezhouLng);
+            
+            // 如果已经有位置信息，重新计算距离
+            if (currentLat && currentLng) {
+                updateDistance(currentLat, currentLng);
+            }
+            
+            alert("德州坐标已更新!");
+        }
+        
+        // 更新当前位置
+        function updateCurrentLocation() {
+            const lat = parseFloat(document.getElementById('current-lat').value);
+            const lng = parseFloat(document.getElementById('current-lng').value);
+            
+            if (isNaN(lat) || isNaN(lng)) {
+                alert("请输入有效的经纬度");
+                return;
+            }
+            
+            currentLat = lat;
+            currentLng = lng;
+            localStorage.setItem('currentLat', currentLat);
+            localStorage.setItem('currentLng', currentLng);
+            
+            updateDistance(currentLat, currentLng);
+            alert("当前位置已更新!");
+        }
+        
+        // 更新密码
+        function updatePassword() {
+            const newPassword = document.getElementById('new-password').value;
+            if (!newPassword) {
+                alert("请输入新密码");
+                return;
+            }
+            
+            adminPassword = newPassword;
+            localStorage.setItem('adminPassword', adminPassword);
+            document.getElementById('new-password').value = "";
+            alert("密码已更新!");
+        }
+        
+        // 初始化
+        window.onload = function() {
+            loadData();
+            
+            // 每秒更新倒计时
+            setInterval(updateCountdown, 1000);
+        };
+    </script>
+</body>
+</html>
